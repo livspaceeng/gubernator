@@ -5,6 +5,7 @@ name: build-and-push
 data:
   build:
     containerRepo: livspace/gubernator
+    disableCache: true
   promote:
     deploymentRepo: core-infra-deployments
     appName: gubernator
