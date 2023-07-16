@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## As of 2.0.0-rc.42 this CHANGELOG is deprecated in favor of using github's change release feature.
+
+## [2.0.0-rc.42] - 2023-03-03
+## What's Changed
+* Allow binding the daemon to a random port by @pzduniak in #167
+
+## [2.0.0-rc.40] - 2023-03-01
+## What's Changed
+* Adjust tracing detail by @Baliedge in #166.
+   * Adjust certain functions to debug level tracing. Mainly private methods are debug tracing.
+   * Give background async goroutine traces descriptive names.
+   * Update holster for additional functionality.
+   * Adjust dependency versions to ensure compatibility with holster.
+
+## [2.0.0-rc.39] - 2023-02-28
+## What's Changed
+* Simplify OTel traces by @Baliedge in #165.
+
+## [2.0.0-rc.38] - 2023-02-20
+## What's Changed
+* Update dependencies to patch for CVE-2022-27664 by @Baliedge in #164.
+
+## [2.0.0-rc.37] - 2023-01-12
+## What's Changed
+* Token bucket fix for Gregorian duration by @akshay-livespace in #162.
+  * Token bucket algorithm would reset "remaining" for a request within milliseconds when using behavior DURATION_IS_GREGORIAN.
+  * This is happening because expiry calculation for behavior DURATION_IS_GREGORIAN, was calculated but never updated.
+
 ## [2.0.0-rc.36] - 2022-12-07
 ## What's Changed
 * Add environment variable to set minimum TLS version on server tls config by

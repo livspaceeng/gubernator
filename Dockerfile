@@ -1,5 +1,5 @@
 # Build image
-FROM --platform=$BUILDPLATFORM golang:1.19.2 as build
+FROM --platform=$BUILDPLATFORM golang:1.20.3 as build
 ARG BUILDPLATFORM
 ARG TARGETPLATFORM
 # https://github.com/docker/buildx/issues/510#issuecomment-768432329
@@ -20,7 +20,10 @@ ARG VERSION
 
 # Build the server inside the container
 RUN CGO_ENABLED=0 GOOS=${TARGETPLATFORM%/*} GOARCH=${TARGETPLATFORM#*/} go build -a -installsuffix cgo \
-    -ldflags "-w -s -X main.Version=$VERSION" -o /gubernator /go/src/cmd/gubernator/main.go
+    -ldflags "-w -s -X main.Version=$VERSION" -o /gubernator /go/src/cmd/gubernator
+
+RUN CGO_ENABLED=0 GOOS=${TARGETPLATFORM%/*} GOARCH=${TARGETPLATFORM#*/} go build -a -installsuffix cgo \
+    -ldflags "-w -s" -o /healthcheck /go/src/cmd/healthcheck
 
 # Create our deploy image
 FROM scratch
@@ -30,6 +33,10 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy our static executable.
 COPY --from=build /gubernator /gubernator
+COPY --from=build /healthcheck /healthcheck
+
+# Healtcheck
+HEALTHCHECK --interval=3s --timeout=1s --start-period=2s --retries=2 CMD [ "/healthcheck" ]
 
 # Run the server
 ENTRYPOINT ["/gubernator"]

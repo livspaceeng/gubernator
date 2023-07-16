@@ -57,7 +57,7 @@ type Daemon struct {
 	statsHandler  *GRPCStatsHandler
 	promRegister  *prometheus.Registry
 	gwCancel      context.CancelFunc
-	gubeConfig    Config
+	instanceConf  Config
 }
 
 // SpawnDaemon starts a new gubernator daemon according to the provided DaemonConfig.
@@ -66,7 +66,7 @@ type Daemon struct {
 func SpawnDaemon(ctx context.Context, conf DaemonConfig) (*Daemon, error) {
 	var s *Daemon
 
-	err := tracing.Scope(ctx, func(ctx context.Context) error {
+	err := tracing.CallScope(ctx, func(ctx context.Context) error {
 		s = &Daemon{
 			log:  conf.Logger,
 			conf: conf,
@@ -126,7 +126,7 @@ func (s *Daemon) Start(ctx context.Context) error {
 	s.grpcSrvs = append(s.grpcSrvs, grpc.NewServer(opts...))
 
 	// Registers a new gubernator instance with the GRPC server
-	s.gubeConfig = Config{
+	s.instanceConf = Config{
 		PeerTLS:      s.conf.ClientTLS(),
 		DataCenter:   s.conf.DataCenter,
 		LocalPicker:  s.conf.Picker,
@@ -134,8 +134,11 @@ func (s *Daemon) Start(ctx context.Context) error {
 		Logger:       s.log,
 		CacheFactory: cacheFactory,
 		Behaviors:    s.conf.Behaviors,
+		CacheSize:    s.conf.CacheSize,
+		Workers:      s.conf.Workers,
 	}
-	s.V1Server, err = NewV1Instance(s.gubeConfig)
+
+	s.V1Server, err = NewV1Instance(s.instanceConf)
 	if err != nil {
 		return errors.Wrap(err, "while creating new gubernator instance")
 	}
@@ -151,7 +154,7 @@ func (s *Daemon) Start(ctx context.Context) error {
 
 	// Start serving GRPC Requests
 	s.wg.Go(func() {
-		s.log.Infof("GRPC Listening on %s ...", s.conf.GRPCListenAddress)
+		s.log.Infof("GRPC Listening on %s ...", l.Addr().String())
 		if err := s.grpcSrvs[0].Serve(l); err != nil {
 			s.log.WithError(err).Error("while starting GRPC server")
 		}
@@ -274,14 +277,14 @@ func (s *Daemon) Start(ctx context.Context) error {
 		return errors.Wrap(err, "while starting HTTP listener")
 	}
 
-	addrs := []string{s.conf.HTTPListenAddress}
+	httpListenerAddr := s.HTTPListener.Addr().String()
+	addrs := []string{httpListenerAddr}
 
 	if s.conf.ServerTLS() != nil {
 
 		// If configured, start another listener at configured address and server only
 		// /v1/HealthCheck while not requesting or verifying client certificate.
 		if s.conf.HTTPStatusListenAddress != "" {
-			addrs = append(addrs, s.conf.HTTPStatusListenAddress)
 			muxNoMTLS := http.NewServeMux()
 			muxNoMTLS.Handle("/v1/HealthCheck", gateway)
 			s.httpSrvNoMTLS = &http.Server{
@@ -295,8 +298,10 @@ func (s *Daemon) Start(ctx context.Context) error {
 			if err != nil {
 				return errors.Wrap(err, "while starting HTTP listener for health metric")
 			}
+			httpAddr := httpListener.Addr().String()
+			addrs = append(addrs, httpAddr)
 			s.wg.Go(func() {
-				s.log.Infof("HTTPS Status Handler Listening on %s ...", s.conf.HTTPStatusListenAddress)
+				s.log.Infof("HTTPS Status Handler Listening on %s ...", httpAddr)
 				if err := s.httpSrvNoMTLS.ServeTLS(httpListener, "", ""); err != nil {
 					if err != http.ErrServerClosed {
 						s.log.WithError(err).Error("while starting TLS Status HTTP server")
@@ -309,7 +314,7 @@ func (s *Daemon) Start(ctx context.Context) error {
 		// since the tls config is a shared pointer.
 		s.httpSrv.TLSConfig = s.conf.ServerTLS().Clone()
 		s.wg.Go(func() {
-			s.log.Infof("HTTPS Gateway Listening on %s ...", s.conf.HTTPListenAddress)
+			s.log.Infof("HTTPS Gateway Listening on %s ...", httpListenerAddr)
 			if err := s.httpSrv.ServeTLS(s.HTTPListener, "", ""); err != nil {
 				if err != http.ErrServerClosed {
 					s.log.WithError(err).Error("while starting TLS HTTP server")
@@ -318,7 +323,7 @@ func (s *Daemon) Start(ctx context.Context) error {
 		})
 	} else {
 		s.wg.Go(func() {
-			s.log.Infof("HTTP Gateway Listening on %s ...", s.conf.HTTPListenAddress)
+			s.log.Infof("HTTP Gateway Listening on %s ...", httpListenerAddr)
 			if err := s.httpSrv.Serve(s.HTTPListener); err != nil {
 				if err != http.ErrServerClosed {
 					s.log.WithError(err).Error("while starting HTTP server")
